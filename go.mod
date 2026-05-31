@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/stretchr/testify v1.11.1
-	github.com/tinfoilsh/encrypted-http-body-protocol v0.0.0
+	github.com/tinfoilsh/encrypted-http-body-protocol v0.2.0
 	github.com/tinfoilsh/tinfoil-go v0.12.4
 )
 
@@ -85,5 +85,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/tinfoilsh/encrypted-http-body-protocol => ../encrypted-http-body-protocol
