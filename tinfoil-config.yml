@@ -1,31 +1,30 @@
-# Tinfoil Container Configuration
-# This file will be auto-populated when you deploy via the Tinfoil dashboard.
-# You can also edit it manually - see docs at https://docs.tinfoil.sh/containers/config
-#
-# After creating this repo from the template:
-# 1. Go to https://dash.tinfoil.sh and create a new container
-# 2. Provide this repository URL and your container details
-# 3. This file will be automatically updated with your deployment settings
-#
-# For updates: edit this file, commit, and push a new tag (e.g., v2)
-
-cvm-version: 0.7.5
-cpus: 2
+cvm-version: 0.10.0
 memory: 8192
+cpus: 4
 
-# Container configuration
-# Note: image must include SHA256 hash (e.g., image:tag@sha256:abc123...)
 containers:
-  - name: "app"
-    image: "your-image:tag@sha256:..."
-    env:
-      - LOG_LEVEL: "info"
-    secrets:
-      - API_KEY
-    command: ["--port", "8000"]
+  - name: "vault"
+    image: "ghcr.io/tyurek/confidential-secrets-vault@sha256:0000000000000000000000000000000000000000000000000000000000000000" # placeholder - populated during release
+    restart: always
+    networks: ["egress"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
 
-# Shim configuration (adjust upstream-port and paths to match your container)
+# The vault verifies each workload's SNP quote + sigstore provenance, so it needs
+# egress to fetch the VCEK and the attestation bundle. (The sigstore trust root
+# is embedded in the binary, so no TUF egress is required.) Verify this list at
+# deploy time — watch the vault log for egress-blocked fetches.
+networks:
+  egress:
+    egress: allowlist
+    allow:
+      - kdsintf.amd.com               # SEV VCEK + ASK/ARK chain (default getter)
+      - kds-proxy.tinfoil.sh          # intended route once the getter is pointed at it
+      - api-github-proxy.tinfoil.sh   # GitHub sigstore attestation bundle
+
 shim:
-  upstream-port: 8000
-  paths:
-    - /health
+  upstream-port: 8080
+  paths: ["/store", "/fetch", "/secrets", "/health"]
