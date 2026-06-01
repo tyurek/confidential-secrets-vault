@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/x509"
 	"encoding/base64"
 	"os"
 	"testing"
@@ -47,6 +48,7 @@ func TestTurinVCEKURL(t *testing.T) {
 	require.Len(t, id, 64)
 	require.True(t, allZero(id[8:]), "Turin chip ID is 8 bytes left-aligned in the 64-byte field")
 	require.Equal(t, box2VCEKURL, turinVCEKURL(id[:8], report.GetReportedTcb()))
+	require.Equal(t, sevsnp.SevProduct_SEV_PRODUCT_TURIN, reportProduct(report))
 }
 
 // TestTurinVerifyReport locks in the chain + raw-signature verification (bug #3
@@ -56,14 +58,17 @@ func TestTurinVerifyReport(t *testing.T) {
 	doc, _ := box2Doc(t)
 	vcek, err := os.ReadFile("testdata/box2-turin-vcek.der")
 	require.NoError(t, err)
-	meas, hpke, err := verifyReport(doc, vcek, sevsnp.SevProduct_SEV_PRODUCT_TURIN)
+	meas, hpke, err := verifyReport(doc, vcek)
 	require.NoError(t, err)
 	require.Equal(t, box2Measurement, meas)
 	require.Equal(t, box2HPKEKey, hpke)
 
-	// A different product's chain must not verify this Turin VCEK.
-	_, _, err = verifyReport(doc, vcek, sevsnp.SevProduct_SEV_PRODUCT_GENOA)
-	require.Error(t, err)
+	// The chain check is real: this Turin VCEK does not chain to the Genoa ASK.
+	gAsk, _, err := amdChain(sevsnp.SevProduct_SEV_PRODUCT_GENOA)
+	require.NoError(t, err)
+	c, err := x509.ParseCertificate(vcek)
+	require.NoError(t, err)
+	require.Error(t, c.CheckSignatureFrom(gAsk))
 }
 
 // TestTurinFetchAndVerifyLive ties it together against KDS: fetchVCEK must build
@@ -77,7 +82,7 @@ func TestTurinFetchAndVerifyLive(t *testing.T) {
 	doc, _ := box2Doc(t)
 	vcek, err := fetchVCEK(doc)
 	require.NoError(t, err)
-	meas, hpke, err := verifyReport(doc, vcek, sevsnp.SevProduct_SEV_PRODUCT_TURIN)
+	meas, hpke, err := verifyReport(doc, vcek)
 	require.NoError(t, err)
 	require.Equal(t, box2Measurement, meas)
 	require.Equal(t, box2HPKEKey, hpke)

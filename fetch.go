@@ -12,8 +12,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/google/go-sev-guest/proto/sevsnp"
-
 	"github.com/tinfoilsh/tinfoil-go/verifier/attestation"
 	"github.com/tinfoilsh/tinfoil-go/verifier/github"
 	"github.com/tinfoilsh/tinfoil-go/verifier/sigstore"
@@ -127,7 +125,7 @@ func (devVerifier) verify(req *fetchRequest) (string, string, error) {
 // REPORTDATA, not the cert):
 //
 //  1. sigstore: the bundle proves the code was built from repo@digest → codeMeasurement
-//  2. SNP quote: VerifyWithVCEK → { enclave measurement, pk_W from REPORTDATA }
+//  2. SNP quote: verifyReport → { enclave measurement, pk_W from REPORTDATA }
 //  3. bind them: codeMeasurement == enclave measurement
 //
 // The proven repo is the tenant key; pk_W is the hardware-attested key to seal to.
@@ -169,7 +167,10 @@ func (v *snpVerifier) verify(req *fetchRequest) (string, string, error) {
 	// (repo, digest) it claims (digest defaults to the repo's latest release).
 	var err error
 	sigBundle, digest := req.Bundle.SigstoreBundle, req.Bundle.Digest
-	if len(sigBundle) == 0 {
+	// A nil json.RawMessage serialises to the literal `null` (the field has no
+	// omitempty in tinfoil-go), which decodes back to the 4 bytes "null" — not
+	// empty. Treat that as "no bundle supplied" so we fetch it from GitHub.
+	if len(sigBundle) == 0 || string(sigBundle) == "null" {
 		if digest == "" {
 			if digest, err = github.FetchLatestDigest(req.Repo); err != nil {
 				return "", "", fmt.Errorf("latest digest for %s: %w", req.Repo, err)
@@ -188,26 +189,28 @@ func (v *snpVerifier) verify(req *fetchRequest) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("vcek: %w", err)
 	}
-	ev, err := req.Bundle.EnclaveAttestationReport.VerifyWithVCEK(vcek)
+	measurement, hpke, err := verifyReport(req.Bundle.EnclaveAttestationReport, vcek)
 	if err != nil {
 		return "", "", fmt.Errorf("quote: %w", err)
 	}
 
-	if err := codeMeasurement.Equals(ev.Measurement); err != nil {
-		return "", "", fmt.Errorf("code/enclave measurement mismatch: %w", err)
+	// Bind provenance to hardware: the measurement sigstore proved was built from
+	// the repo must equal the one the SEV-SNP quote attests.
+	if len(codeMeasurement.Registers) == 0 || !strings.EqualFold(codeMeasurement.Registers[0], measurement) {
+		return "", "", fmt.Errorf("code/enclave measurement mismatch: code=%v enclave=%s", codeMeasurement.Registers, measurement)
 	}
-	if ev.HPKEPublicKey == "" {
+	if hpke == "" {
 		return "", "", fmt.Errorf("quote carries no HPKE key in REPORTDATA")
 	}
-	return req.Repo, ev.HPKEPublicKey, nil
+	return req.Repo, hpke, nil
 }
 
-// pinVerifier verifies the SEV-SNP quote for real (VerifyWithVCEK) but checks the
+// pinVerifier verifies the SEV-SNP quote for real (verifyReport) but checks the
 // measurement against a pinned value instead of deriving the repo via sigstore.
 // For dev-launched workloads that have no published provenance — real attestation,
 // pinned identity. `repo` is taken as the (trusted) storage label.
 type pinVerifier struct {
-	measurement string // expected SEV-SNP measurement (hex, the quote's register 0)
+	measurement string // expected SEV-SNP measurement (hex)
 }
 
 func (p pinVerifier) verify(req *fetchRequest) (string, string, error) {
@@ -218,7 +221,7 @@ func (p pinVerifier) verify(req *fetchRequest) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("vcek: %w", err)
 	}
-	got, hpke, err := verifyReport(req.Bundle.EnclaveAttestationReport, vcek, sevsnp.SevProduct_SEV_PRODUCT_TURIN)
+	got, hpke, err := verifyReport(req.Bundle.EnclaveAttestationReport, vcek)
 	if err != nil {
 		return "", "", fmt.Errorf("quote: %w", err)
 	}

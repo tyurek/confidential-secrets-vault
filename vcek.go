@@ -48,8 +48,9 @@ func parseReport(doc *attestation.Document) (*sevsnp.Report, error) {
 // verifyReport checks a SEV-SNP report and returns its measurement and the HPKE
 // key bound in REPORTDATA: the VCEK chains to the AMD root (ARK) via the ASK,
 // and the report is signed by the VCEK. tinfoil-go hardcodes Genoa, so we verify
-// here to also support box2 (Turin).
-func verifyReport(doc *attestation.Document, vcekDER []byte, product sevsnp.SevProduct_SevProductName) (measurement, hpkeKey string, err error) {
+// here to support both Genoa (production) and Turin (box2); the product is taken
+// from the report.
+func verifyReport(doc *attestation.Document, vcekDER []byte) (measurement, hpkeKey string, err error) {
 	raw, err := decodeReport(doc)
 	if err != nil {
 		return "", "", err
@@ -62,7 +63,7 @@ func verifyReport(doc *attestation.Document, vcekDER []byte, product sevsnp.SevP
 	if err != nil {
 		return "", "", fmt.Errorf("parsing vcek: %w", err)
 	}
-	ask, ark, err := amdChain(product)
+	ask, ark, err := amdChain(reportProduct(report))
 	if err != nil {
 		return "", "", err
 	}
@@ -82,6 +83,15 @@ func verifyReport(doc *attestation.Document, vcekDER []byte, product sevsnp.SevP
 		return "", "", fmt.Errorf("report data too short")
 	}
 	return hex.EncodeToString(report.GetMeasurement()), hex.EncodeToString(rd[32:64]), nil
+}
+
+// reportProduct picks the AMD product line from the report's chip-ID shape:
+// Turin uses an 8-byte ID (left-aligned, rest zero), Genoa/Milan a full 64 bytes.
+func reportProduct(report *sevsnp.Report) sevsnp.SevProduct_SevProductName {
+	if id := report.GetChipId(); len(id) == 64 && allZero(id[8:]) {
+		return sevsnp.SevProduct_SEV_PRODUCT_TURIN
+	}
+	return sevsnp.SevProduct_SEV_PRODUCT_GENOA
 }
 
 // amdChain returns the (ASK, ARK) for a product from go-sev-guest's embedded,

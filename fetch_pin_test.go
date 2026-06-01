@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/google/go-sev-guest/proto/sevsnp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tinfoilsh/tinfoil-go/verifier/attestation"
@@ -37,7 +36,7 @@ func TestVerifyReportAgainstLiveQuote(t *testing.T) {
 	t.Logf("measurement: %s", want)
 
 	// Our verifier, with the supplied VCEK, must agree.
-	meas, hpke, err := verifyReport(bundle.EnclaveAttestationReport, vcek, sevsnp.SevProduct_SEV_PRODUCT_GENOA)
+	meas, hpke, err := verifyReport(bundle.EnclaveAttestationReport, vcek)
 	require.NoError(t, err)
 	require.Equal(t, want, meas)
 	require.Equal(t, ev.HPKEPublicKey, hpke)
@@ -45,7 +44,7 @@ func TestVerifyReportAgainstLiveQuote(t *testing.T) {
 	// And with a VCEK fetched from KDS (this host doesn't mask its chip ID).
 	fetched, err := fetchVCEK(bundle.EnclaveAttestationReport)
 	require.NoError(t, err)
-	meas2, hpke2, err := verifyReport(bundle.EnclaveAttestationReport, fetched, sevsnp.SevProduct_SEV_PRODUCT_GENOA)
+	meas2, hpke2, err := verifyReport(bundle.EnclaveAttestationReport, fetched)
 	require.NoError(t, err)
 	require.Equal(t, want, meas2)
 	require.Equal(t, ev.HPKEPublicKey, hpke2)
