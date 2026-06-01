@@ -23,16 +23,23 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	idFile := flag.String("identity", "vault_identity.json", "HPKE identity file (standalone mode only; generated if absent)")
 	devVerify := flag.Bool("dev-verify", false, "INSECURE: trust the repo/pk_w a workload claims at /fetch without attestation (testing only)")
+	pinMeasurement := flag.String("pin-measurement", "", "verify the SEV-SNP quote for real but accept any workload whose measurement equals this hex (no sigstore provenance) — for dev-launched workloads")
 	behindShim := flag.Bool("behind-shim", false, "deployed behind the tinfoil shim: the shim does EHBP and serves the HPKE key, so read plaintext /store and don't serve /.well-known/hpke-keys")
 	flag.Parse()
 
 	var v verifier
 	var err error
-	if *devVerify {
+	switch {
+	case *devVerify:
 		v = devVerifier{}
 		log.Printf("WARNING: --dev-verify enabled; /fetch trusts claimed repo/pk_w without attestation")
-	} else if v, err = newSNPVerifier(nil); err != nil {
-		log.Fatalf("snp verifier: %v", err)
+	case *pinMeasurement != "":
+		v = pinVerifier{measurement: *pinMeasurement}
+		log.Printf("pin-measurement mode: releasing to verified SEV-SNP quotes with measurement %s", *pinMeasurement)
+	default:
+		if v, err = newSNPVerifier(nil); err != nil {
+			log.Fatalf("snp verifier: %v", err)
+		}
 	}
 
 	// Standalone (testing) the vault does its own EHBP and serves its key, so it

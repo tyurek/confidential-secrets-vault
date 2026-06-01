@@ -3,6 +3,7 @@ module github.com/tinfoilsh/confidential-secrets-vault
 go 1.26
 
 require (
+	github.com/google/go-sev-guest v0.14.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tinfoilsh/encrypted-http-body-protocol v0.2.0
 	github.com/tinfoilsh/tinfoil-go v0.12.4
@@ -42,7 +43,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/certificate-transparency-go v1.3.2 // indirect
 	github.com/google/go-containerregistry v0.20.7 // indirect
-	github.com/google/go-sev-guest v0.14.1 // indirect
 	github.com/google/go-tdx-guest v0.3.1 // indirect
 	github.com/google/logger v1.1.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect

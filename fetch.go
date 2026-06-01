@@ -4,13 +4,15 @@ import (
 	"crypto/ecdh"
 	"crypto/hpke"
 	_ "embed"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
+
+	"github.com/google/go-sev-guest/proto/sevsnp"
 
 	"github.com/tinfoilsh/tinfoil-go/verifier/attestation"
 	"github.com/tinfoilsh/tinfoil-go/verifier/github"
@@ -182,11 +184,9 @@ func (v *snpVerifier) verify(req *fetchRequest) (string, string, error) {
 		return "", "", fmt.Errorf("provenance: %w", err)
 	}
 
-	var vcek []byte
-	if req.Bundle.VCEK != "" {
-		if vcek, err = base64.StdEncoding.DecodeString(req.Bundle.VCEK); err != nil {
-			return "", "", fmt.Errorf("decoding vcek: %w", err)
-		}
+	vcek, err := bundleVCEK(req.Bundle)
+	if err != nil {
+		return "", "", fmt.Errorf("vcek: %w", err)
 	}
 	ev, err := req.Bundle.EnclaveAttestationReport.VerifyWithVCEK(vcek)
 	if err != nil {
@@ -200,4 +200,34 @@ func (v *snpVerifier) verify(req *fetchRequest) (string, string, error) {
 		return "", "", fmt.Errorf("quote carries no HPKE key in REPORTDATA")
 	}
 	return req.Repo, ev.HPKEPublicKey, nil
+}
+
+// pinVerifier verifies the SEV-SNP quote for real (VerifyWithVCEK) but checks the
+// measurement against a pinned value instead of deriving the repo via sigstore.
+// For dev-launched workloads that have no published provenance — real attestation,
+// pinned identity. `repo` is taken as the (trusted) storage label.
+type pinVerifier struct {
+	measurement string // expected SEV-SNP measurement (hex, the quote's register 0)
+}
+
+func (p pinVerifier) verify(req *fetchRequest) (string, string, error) {
+	if req.Bundle == nil || req.Bundle.EnclaveAttestationReport == nil {
+		return "", "", fmt.Errorf("attestation bundle required")
+	}
+	vcek, err := bundleVCEK(req.Bundle)
+	if err != nil {
+		return "", "", fmt.Errorf("vcek: %w", err)
+	}
+	got, hpke, err := verifyReport(req.Bundle.EnclaveAttestationReport, vcek, sevsnp.SevProduct_SEV_PRODUCT_TURIN)
+	if err != nil {
+		return "", "", fmt.Errorf("quote: %w", err)
+	}
+	log.Printf("fetch: SEV-SNP quote verified, measurement=%s", got)
+	if !strings.EqualFold(got, p.measurement) {
+		return "", "", fmt.Errorf("measurement %s not pinned (want %s)", got, p.measurement)
+	}
+	if hpke == "" {
+		return "", "", fmt.Errorf("quote carries no HPKE key in REPORTDATA")
+	}
+	return req.Repo, hpke, nil
 }

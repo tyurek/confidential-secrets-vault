@@ -35,6 +35,8 @@ export GOTOOLCHAIN=auto
 command -v go   >/dev/null || { echo "go not found on PATH"; exit 1; }
 command -v curl >/dev/null || { echo "curl not found on PATH"; exit 1; }
 [ -d "$CLI_DIR" ] || { echo "tinfoil-cli not found at $CLI_DIR (set TINFOIL_CLI_DIR)"; exit 1; }
+ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE ":${PORT}\$" \
+  && { echo "port ${PORT} already in use (another vault?) — stop it or set VAULT_PORT"; exit 1; }
 
 WORK="$(mktemp -d)"
 SVAULT="$WORK/svault"
