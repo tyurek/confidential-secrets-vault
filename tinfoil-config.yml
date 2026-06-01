@@ -4,7 +4,7 @@ cpus: 4
 
 containers:
   - name: "vault"
-    image: "ghcr.io/tyurek/confidential-secrets-vault@sha256:0000000000000000000000000000000000000000000000000000000000000000" # placeholder - populated during release
+    image: "ghcr.io/tyurek/confidential-secrets-vault@sha256:cffe20a4843326e1e77bcc8486264fd0c7808d3734239502026e395af0ccf70e" # v0.0.4
     restart: always
     networks: ["egress"]
     healthcheck:
